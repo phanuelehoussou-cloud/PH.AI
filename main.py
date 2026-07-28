@@ -20,18 +20,17 @@ if hasattr(sys.stdout, "reconfigure"):
 # CONFIG
 # ==============================
 load_dotenv(dotenv_path=".env", override=True)
-API_KEY = os.environ.get("API_KEY")
+API_KEY = (os.environ.get("API_KEY") or "").strip()
 BASE_URL = "https://api.groq.com/openai/v1"
 MODEL = "llama-3.3-70b-versatile"
-SEUIL_VOIX = 150  # Sensibilité micro hyper réactive
+SEUIL_VOIX_MAX = 150  # Seuil maximal garanti pour une haute sensibilité (pas besoin de parler fort)
 
 if not API_KEY:
-    print("⚠️ ATTENTION : Aucune clé API_KEY trouvée dans le fichier .env !")
+    print("⚠️ ATTENTION : Aucune clé API_KEY valide trouvée dans le fichier .env !")
 
 client = OpenAI(api_key=API_KEY or "DUMMY_KEY", base_url=BASE_URL)
 
-SYSTEM_PROMPT = """Tu es PH.AI, mon IA a moi ton createur PHANUEL 
-
+SYSTEM_PROMPT = """Tu es PH.AI, mon IA à moi ton créateur PHANUEL.
 
 TA MÉTHODE DE RÉPONSE (toujours dans cet ordre) :
 - Explication — claire et simple
@@ -40,7 +39,7 @@ TA MÉTHODE DE RÉPONSE (toujours dans cet ordre) :
 - Conseil — une astuce pour progresser
 
 TES RÈGLES :
-- MEt dans tes reponse quelque mot anglais (combine avec le français) pour rendre la conversation plus naturelle(franc-anglais)
+- Mets dans tes réponses quelques mots anglais (combinés avec le français) pour rendre la conversation plus naturelle (franc-anglais)
 - Tu réponds TOUJOURS en franc-anglais
 - Tes réponses vocales sont courtes et claires
 - Tu encourages toujours à la fin"""
@@ -61,34 +60,39 @@ saisie_queue = queue.Queue()       # Queue thread-safe (Clavier + Vocal)
 def surveiller_micro():
     """Écoute le micro pendant que l'IA parle et coupe la parole UNIQUEMENT si 'ATTEND' ou 'STOP' est dit."""
     recognizer = sr.Recognizer()
+    recognizer.energy_threshold = 150
     recognizer.dynamic_energy_threshold = True
+    recognizer.pause_threshold = 0.6
     MOTS_CLES_INTERRUPTION = ["attend", "attends", "attendez", "stop", "pause", "arret", "arrête", "arrete"]
 
     while True:
         if ia_parle.is_set():
-            time.sleep(0.3)
+            time.sleep(0.2)
             if not ia_parle.is_set():
                 continue
 
             try:
                 with sr.Microphone() as source:
-                    recognizer.adjust_for_ambient_noise(source, duration=0.3)
+                    recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                    if recognizer.energy_threshold > SEUIL_VOIX_MAX:
+                        recognizer.energy_threshold = SEUIL_VOIX_MAX
+
                     while ia_parle.is_set() and not interrompu.is_set():
                         try:
-                            audio = recognizer.listen(source, timeout=0.8, phrase_time_limit=2.0)
+                            audio = recognizer.listen(source, timeout=1.0, phrase_time_limit=2.0)
                             if ia_parle.is_set():
                                 mots_dits = recognizer.recognize_google(audio, language="fr-FR").lower()
                                 if any(kw in mots_dits for kw in MOTS_CLES_INTERRUPTION):
                                     pygame.mixer.music.stop()
                                     interrompu.set()
-                                    print("\n🛑 [Mot-clé 'ATTEND' détecté ! PH.AI s'arrête]")
+                                    print("\n🛑 [Mot-clé 'ATTEND' / 'STOP' détecté ! PH.AI s'arrête]")
                                     break
                         except (sr.WaitTimeoutError, sr.UnknownValueError):
                             pass
                         except Exception:
                             break
             except Exception:
-                time.sleep(0.2)
+                time.sleep(0.3)
         else:
             time.sleep(0.1)
 
@@ -99,29 +103,50 @@ def surveiller_micro():
 def thread_ecoute_vocale():
     """Écoute le microphone quand PH.AI attend une question."""
     recognizer = sr.Recognizer()
-    recognizer.energy_threshold = SEUIL_VOIX
-    recognizer.dynamic_energy_threshold = False
+    # Micro ultra sensible (seuil bas) + pause de 2.0s pour écouter les phrases longues sans couper !
+    recognizer.energy_threshold = 100
+    recognizer.dynamic_energy_threshold = True
+    recognizer.dynamic_energy_adjustment_damping = 0.15
+    recognizer.dynamic_energy_ratio = 1.2
+    recognizer.pause_threshold = 2.0  # Attend 2.0 secondes de silence avant de valider la fin de phrase
+
+    mic_annonce = False
 
     while True:
         if ecoute_active.is_set() and not ia_parle.is_set():
             try:
                 with sr.Microphone() as source:
-                    recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                    recognizer.adjust_for_ambient_noise(source, duration=0.3)
+                    # Forcer un seuil d'énergie très sensible pour ne pas obliger l'utilisateur à parler fort
+                    if recognizer.energy_threshold > SEUIL_VOIX_MAX:
+                        recognizer.energy_threshold = SEUIL_VOIX_MAX
+
+                    if not mic_annonce and ecoute_active.is_set() and not ia_parle.is_set():
+                        print("🎤 [Microphone prêt — Parlez !]")
+                        mic_annonce = True
+
                     while ecoute_active.is_set() and not ia_parle.is_set():
                         try:
-                            audio = recognizer.listen(source, timeout=1.5, phrase_time_limit=8.0)
+                            # phrase_time_limit augmenté à 20s pour les questions longues
+                            audio = recognizer.listen(source, timeout=4.0, phrase_time_limit=20.0)
                             if ecoute_active.is_set() and not ia_parle.is_set():
+                                print("⚡ [Son capté — Analyse en cours...]")
                                 texte = recognizer.recognize_google(audio, language="fr-FR").strip()
                                 if texte:
+                                    mic_annonce = False
                                     saisie_queue.put(("vocal", texte))
                                     break
-                        except (sr.WaitTimeoutError, sr.UnknownValueError):
+                        except sr.WaitTimeoutError:
                             pass
-                        except Exception:
+                        except sr.UnknownValueError:
+                            print("❓ [Voix non comprise — Vous pouvez répéter ou continuer votre phrase]")
+                        except Exception as e:
+                            print(f"[⚠️ Erreur écoute vocale] {e}")
                             break
-            except Exception:
-                time.sleep(0.3)
+            except Exception as e:
+                time.sleep(0.5)
         else:
+            mic_annonce = False
             time.sleep(0.1)
 
 
@@ -231,7 +256,7 @@ def envoyer(question):
 
     if est_demande_changement(question):
         historique = [{"role": "system", "content": SYSTEM_PROMPT}]
-        prompt_reset = "Salue à nouveau ton créateur PHANUEL en l'appellant MY LORD et demande-lui comment tu peux l'aider aujourd'hui."
+        prompt_reset = "Salue à nouveau ton créateur PHANUEL en l'appellant MY LORD (prononce ça en anglais) et demande-lui comment tu peux l'aider aujourd'hui."
         reponse = executer_requete_ia([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt_reset}])
         if not reponse.startswith("Erreur API"):
             historique.append({"role": "assistant", "content": reponse})
