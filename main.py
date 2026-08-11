@@ -46,7 +46,7 @@ TES RÈGLES :
 
 
 # ==============================
-# ÉTAT GLOBAL
+# ÉÉTAT GLOBAL
 # ==============================
 ia_parle = threading.Event()       # True quand l'IA parle
 interrompu = threading.Event()     # True quand l'utilisateur coupe la parole
@@ -98,7 +98,7 @@ def surveiller_micro():
 
 
 # ==============================
-# ÉCOUTE VOCALE DES QUESTIONS (arrière-plan)
+# ÉÉCOUTE VOCALE DES QUESTIONS (arrière-plan)
 # ==============================
 def thread_ecoute_vocale():
     """Écoute le microphone quand PH.AI attend une question."""
@@ -151,7 +151,7 @@ def thread_ecoute_vocale():
 
 
 # ==============================
-# ÉCOUTE CLAVIER EN CONTINU
+# ÉÉCOUTE CLAVIER EN CONTINU
 # ==============================
 def thread_ecoute_clavier():
     """Capture la saisie au clavier."""

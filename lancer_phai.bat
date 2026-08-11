@@ -1,8 +1,9 @@
-@echo off
+﻿@echo off
+chcp 65001 >nul
 title PH.AI - Toujours disponible for my LORD !
 cd /d "%~dp0"
 echo ===================================================
-echo   Lancement de PH.AI (Toujours disponible for my LORD)...
+echo   PH.AI - Toujours disponible for my LORD !
 echo ===================================================
 echo.
 if exist "venv\Scripts\python.exe" (

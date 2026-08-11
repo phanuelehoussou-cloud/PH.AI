@@ -4,36 +4,19 @@ import sys
 import os
 import time
 
-# Configurer l'encodage de la console sous Windows pour éviter UnicodeEncodeError
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-# Mots d'activation reconnus (Mots-clés principaux : LET'S GO / ARISE + variations phonétiques)
 WAKE_WORDS = [
-    "let's go",
-    "lets go",
-    "lesgo",
-    "letgo",
-    "let us go",
-    "les go",
-    "laisse go",
-    "lait se go",
-    "lex go",
-    "arise", 
-    "hey arise", 
-    "ok arise", 
-    "dis arise", 
-    "lancer arise",
-    "ouvre arise",
-    "rise",
-    "aris",
-    "erise",
-    "a rise"
+    "let's go", "lets go", "lesgo", "letgo", "let us go", "les go", 
+    "laisse go", "lait se go", "lex go", "arise", "hey arise", 
+    "ok arise", "dis arise", "lancer arise", "ouvre arise", 
+    "rise", "aris", "erise", "a rise"
 ]
 
 def ecouter_wake_word():
     recognizer = sr.Recognizer()
-    recognizer.energy_threshold = 100  # Seuil très réactif pour ne pas obliger à crier
+    recognizer.energy_threshold = 100
     recognizer.dynamic_energy_threshold = True
     recognizer.dynamic_energy_adjustment_damping = 0.15
     recognizer.dynamic_energy_ratio = 1.2
@@ -56,7 +39,6 @@ def ecouter_wake_word():
                 while True:
                     try:
                         audio = recognizer.listen(source, timeout=4.0, phrase_time_limit=5.0)
-                        print("[⚡ Son détecté ! Analyse en cours...]")
                         
                         texte_reconnu = ""
                         try:
@@ -66,11 +48,11 @@ def ecouter_wake_word():
                                 texte_reconnu = recognizer.recognize_google(audio, language="en-US").lower()
                             except Exception:
                                 pass
-                        except Exception as e:
-                            print(f"[⚠️ Erreur service Google : {e}]")
+                        except Exception:
+                            pass
 
                         if texte_reconnu:
-                            print(f"[🗣️ Entendu : '{texte_reconnu}']")
+                            print(f"[🗣️ Entheard : '{texte_reconnu}']")
 
                             if any(w in texte_reconnu for w in WAKE_WORDS):
                                 print("\n" + "★" * 55)
@@ -106,7 +88,7 @@ def ecouter_wake_word():
                         time.sleep(0.3)
 
         except Exception as e:
-            print(f"[Erreur micro] Impossible d'accéder au microphone : {e}")
+            print(f"[Erreur micro] {e}")
             time.sleep(2)
 
 if __name__ == "__main__":
