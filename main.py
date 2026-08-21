@@ -19,10 +19,13 @@ if hasattr(sys.stdout, "reconfigure"):
 # ==============================
 # CONFIG
 # ==============================
-load_dotenv(dotenv_path=".env", override=True)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+dotenv_path = os.path.join(BASE_DIR, ".env")
+load_dotenv(dotenv_path=dotenv_path, override=True)
+
 API_KEY = (os.environ.get("API_KEY") or "").strip()
 BASE_URL = "https://api.groq.com/openai/v1"
-MODEL = "llama-3.3-70b-versatile"
+MODELS = ["groq/compound", "groq/compound-mini", "qwen/qwen3.6-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 SEUIL_VOIX_MAX = 150  # Seuil maximal garanti pour une haute sensibilité (pas besoin de parler fort)
 
 if not API_KEY:
@@ -93,6 +96,8 @@ def surveiller_micro():
                             break
             except Exception:
                 time.sleep(0.3)
+            finally:
+                time.sleep(0.2)
         else:
             time.sleep(0.1)
 
@@ -243,22 +248,31 @@ def est_demande_changement(question):
 # ENVOYER À L'IA
 # ==============================
 def executer_requete_ia(messages):
-    """Envoie la liste des messages à l'API et retourne le contenu de la réponse."""
-    try:
-        response = client.chat.completions.create(model=MODEL, messages=messages)
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Erreur API : {e}"
+    """Envoie la liste des messages à l'API avec gestion automatique de fallback en cas d'erreur de modèle."""
+    derniere_erreur = None
+    for model_name in MODELS:
+        try:
+            response = client.chat.completions.create(model=model_name, messages=messages)
+            return response.choices[0].message.content
+        except Exception as e:
+            derniere_erreur = e
+            continue
+    return f"Erreur API : {derniere_erreur}"
 
 
 def envoyer(question):
     global historique
 
     if est_demande_changement(question):
-        historique = [{"role": "system", "content": SYSTEM_PROMPT}]
         prompt_reset = "Salue à nouveau ton créateur PHANUEL en l'appellant MY LORD (prononce ça en anglais) et demande-lui comment tu peux l'aider aujourd'hui."
-        reponse = executer_requete_ia([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt_reset}])
-        if not reponse.startswith("Erreur API"):
+        historique = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt_reset}
+        ]
+        reponse = executer_requete_ia(historique)
+        if reponse.startswith("Erreur API"):
+            historique.pop()
+        else:
             historique.append({"role": "assistant", "content": reponse})
         return reponse
 
@@ -301,7 +315,10 @@ t_clavier.start()
 # Premier message d'accueil de PH.AI pour PHANUEL
 reponse_ia = envoyer("Bonjour PH.AI ! Présente-toi brièvement à ton créateur PHANUEL en l'appellant MY LORD (prononce ça en anglais) et demande-lui comment tu peux l'aider today.")
 print(f"PH.AI : {reponse_ia}\n")
-parler(reponse_ia)
+if reponse_ia.startswith("Erreur API"):
+    parler("Désolé my LORD, j'ai rencontré un problème de connexion avec le serveur.")
+else:
+    parler(reponse_ia)
 
 # Activer l'écoute pour les questions de l'utilisateur
 ecoute_active.set()
@@ -334,7 +351,10 @@ while True:
 
         reponse_ia = envoyer(question)
         print(f"\nPH.AI : {reponse_ia}\n")
-        parler(reponse_ia)
+        if reponse_ia.startswith("Erreur API"):
+            parler("Désolé my LORD, j'ai rencontré un problème de connexion avec le serveur.")
+        else:
+            parler(reponse_ia)
 
         # Réactiver l'écoute vocale pour la question suivante
         ecoute_active.set()

@@ -59,22 +59,26 @@ def ecouter_wake_word():
                                 print("*** MOT D'ACTIVATION DÉTECTÉ ! Lancement de PH.AI... ***")
                                 print("★" * 55 + "\n")
                                 
-                                main_path = os.path.join(os.path.dirname(__file__), "main.py")
+                                BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+                                main_path = os.path.join(BASE_DIR, "main.py")
                                 python_exe = sys.executable
-                                venv_python = os.path.join(os.path.dirname(__file__), "venv", "Scripts", "python.exe")
+                                venv_python = os.path.join(BASE_DIR, "venv", "Scripts", "python.exe")
                                 if os.path.exists(venv_python):
                                     python_exe = venv_python
 
+                                creation_flags = subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
+
                                 process = subprocess.Popen(
                                     [python_exe, main_path],
-                                    creationflags=subprocess.CREATE_NEW_CONSOLE,
-                                    cwd=os.path.dirname(__file__)
+                                    creationflags=creation_flags,
+                                    cwd=BASE_DIR
                                 )
 
                                 print("📌 PH.AI est en cours d'exécution dans une nouvelle fenêtre.")
                                 print("⏳ En attente de la fermeture de PH.AI pour réactiver le mot d'activation...\n")
                                 
                                 process.wait()
+                                time.sleep(1.0)
                                 
                                 print("\n🔄 PH.AI fermé. Reprise de l'écoute du mot d'activation...")
                                 break
